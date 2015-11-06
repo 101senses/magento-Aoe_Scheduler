@@ -110,6 +110,11 @@ EXCLUDE_GROUPS=""
 INCLUDE_JOBS=""
 EXCLUDE_JOBS=""
 
+# Environment variable that is used to have a value that will participate in the lock identifier
+# For instance the scheduler can be run by also passing some environment variables, e.g.:
+# * * * * /usr/bin/env SHOP="myshop" PROF="myprof" && /bin/bash ....../scheduler_cron.sh --mode always --env SHOP,PROF
+ENV=""
+
 # Parse command line args (very simplistic)
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -133,6 +138,10 @@ while [ $# -gt 0 ]; do
             EXCLUDE_JOBS=$2
             shift 2
         ;;
+        --env)
+            ENV=$2
+            shift 2
+        ;;
         --)
             shift
             break
@@ -150,11 +159,24 @@ if [ -z "${MODE}" ]; then
     exit 1
 fi
 
+# Collect participating environment variable values
+ENVPARTS=""
+if [ "${ENV}" ]; then
+    arr=$(echo $ENV | tr "," "\n")
+    for envvar in $arr
+    do
+        envvarval=$(printenv $envvar)
+        if [ "${envvarval}" ]; then
+            ENVPARTS="${ENVPARTS}-${envvarval}"
+        fi
+    done
+fi
+
 # Lock process to one run per set of options
 # This is to prevent multiple processes for the same cron parameters (And the only reason we don't call PHP directly)
 
 # Unique identifier for this cron job run
-IDENTIFIER=$(echo -n "${DIR}|${MODE}|${INCLUDE_GROUPS}|${EXCLUDE_GROUPS}|${INCLUDE_JOBS}|${EXCLUDE_JOBS}" | "${MD5SUM_BIN}" - | cut -f1 -d' ')
+IDENTIFIER=$(echo -n "${DIR}|${MODE}|${INCLUDE_GROUPS}|${EXCLUDE_GROUPS}|${INCLUDE_JOBS}|${EXCLUDE_JOBS}|${ENVPARTS}" | "${MD5SUM_BIN}" - | cut -f1 -d' ')
 acquire_lock "/tmp/magento.aoe_scheduler.${IDENTIFIER}.lock";
 
 # Needed because PHP resolves symlinks before setting __FILE__
